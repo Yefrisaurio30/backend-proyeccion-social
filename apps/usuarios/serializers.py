@@ -60,7 +60,7 @@ class RegistroSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
-            raise serializers.ValidationError({'password2': 'Las contrasenas no coinciden.'})
+            raise serializers.ValidationError({'password2': 'Las contraseñas no coinciden.'})
         validate_password(attrs['password'])
         return attrs
 

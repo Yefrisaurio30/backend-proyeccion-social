@@ -1,9 +1,8 @@
-import os
-from supabase import create_client
 from django.conf import settings
 
 
 def get_supabase_client():
+    from supabase import create_client
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
 
@@ -28,8 +27,3 @@ def delete_image(filename):
     client = get_supabase_client()
     bucket = settings.SUPABASE_BUCKET
     client.storage.from_(bucket).remove([filename])
-
-
-def generate_filename(original_name, publicacion_id):
-    ext = os.path.splitext(original_name)[1].lower()
-    return f"publicacion_{publicacion_id}/{original_name}"

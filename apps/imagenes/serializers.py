@@ -1,7 +1,14 @@
+import os
+
 from rest_framework import serializers
 from .models import Imagen
 
 MAX_TAMANO_BYTES = 10 * 1024 * 1024  # 10 MB (igual que el mockup del portal)
+
+# Lista blanca de formatos de imagen (S4). Pillow (ImageField) verifica
+# además que el contenido sea una imagen real, no solo la extensión.
+EXT_PERMITIDAS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+MIME_PERMITIDOS = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
 
 
 class ImagenSerializer(serializers.ModelSerializer):
@@ -19,13 +26,22 @@ class ImagenSerializer(serializers.ModelSerializer):
 
 
 class ImagenUploadSerializer(serializers.ModelSerializer):
-    archivo = serializers.FileField(write_only=True)
+    # ImageField usa Pillow para verificar que el contenido sea imagen (S4).
+    archivo = serializers.ImageField(write_only=True)
 
     class Meta:
         model = Imagen
         fields = ['id', 'archivo', 'nombre', 'descripcion', 'publicacion']
 
     def validate_archivo(self, archivo):
+        ext = os.path.splitext(archivo.name)[1].lower()
+        if ext not in EXT_PERMITIDAS:
+            raise serializers.ValidationError(
+                'Formato no permitido. Use jpg, jpeg, png, webp o gif.'
+            )
+        content_type = getattr(archivo, 'content_type', None)
+        if content_type not in MIME_PERMITIDOS:
+            raise serializers.ValidationError('Tipo de archivo no permitido.')
         if archivo.size > MAX_TAMANO_BYTES:
             raise serializers.ValidationError(
                 'El archivo supera el maximo permitido de 10 MB.'

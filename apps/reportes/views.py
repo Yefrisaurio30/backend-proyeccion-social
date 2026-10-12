@@ -1,3 +1,4 @@
+from rest_framework import viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Count, Q
@@ -5,6 +6,8 @@ from django.contrib.auth import get_user_model
 from apps.publicaciones.models import Publicacion
 from apps.comentarios.models import Comentario
 from apps.usuarios.permissions import IsStaffOrHasRole as IsStaffUser
+from .models import Reporte
+from .serializers import ReporteSerializer
 
 User = get_user_model()
 
@@ -73,10 +76,6 @@ class DashboardView(APIView):
 
 
 # --- Reporte persistido (DER) ---
-
-from rest_framework import viewsets
-from .models import Reporte
-from .serializers import ReporteSerializer
 
 
 class ReporteViewSet(viewsets.ModelViewSet):

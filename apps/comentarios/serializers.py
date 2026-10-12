@@ -52,9 +52,11 @@ class ComentarioModerationSerializer(serializers.ModelSerializer):
             'publicacion', 'publicacion_titulo',
             'usuario', 'usuario_nombre',
         ]
+        # La moderación no reescribe lo que escribió el usuario (L6):
+        # contenido y publicacion son de solo lectura.
         read_only_fields = [
-            'id', 'fechaCreacion', 'estado', 'fechaModeracion',
-            'motivoRechazo', 'usuario',
+            'id', 'contenido', 'fechaCreacion', 'estado', 'fechaModeracion',
+            'motivoRechazo', 'publicacion', 'usuario',
         ]
 
 

@@ -12,8 +12,8 @@ class RegistroActividad(models.Model):
         ARCHIVAR = 'ARCHIVAR', 'Archivar'
         APROBAR = 'APROBADO', 'Aprobar'
         RECHAZAR = 'RECHAZADO', 'Rechazar'
-        LOGIN = 'LOGIN', 'Iniciar sesion'
-        LOGOUT = 'LOGOUT', 'Cerrar sesion'
+        LOGIN = 'LOGIN', 'Iniciar sesión'
+        LOGOUT = 'LOGOUT', 'Cerrar sesión'
 
     accion = models.CharField(max_length=20, choices=Accion.choices)
     fecha = models.DateTimeField(auto_now_add=True)

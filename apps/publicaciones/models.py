@@ -61,20 +61,65 @@ class Publicacion(models.Model):
     class Meta:
         verbose_name_plural = 'Publicaciones'
         ordering = ['-fechaPublicacion', '-fechaCreacion']
+        # Los listados siempre filtran por estado y ordenan por fecha (P3).
+        # Nota: la búsqueda full-text (SearchVector "spanish"/pg_trgm) queda
+        # como mejora posterior: exige Postgres y no corre en sqlite.
+        indexes = [
+            models.Index(fields=['estado', '-fechaPublicacion']),
+        ]
 
     def __str__(self):
         return self.titulo
 
+    # Transiciones permitidas (L4). Un único mapa en el modelo.
+    TRANSICIONES = {
+        Estado.BORRADOR: {Estado.EN_REVISION, Estado.PUBLICADA},
+        Estado.EN_REVISION: {Estado.BORRADOR, Estado.PUBLICADA},
+        Estado.PUBLICADA: {Estado.BORRADOR, Estado.ARCHIVADA},
+        Estado.ARCHIVADA: {Estado.PUBLICADA},
+    }
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        # Guarda el estado original para no reconsultarlo en save() (P4).
+        instance = super().from_db(db, field_names, values)
+        try:
+            instance._estado_original = values[field_names.index('estado')]
+        except ValueError:
+            instance._estado_original = None
+        return instance
+
     def save(self, *args, **kwargs):
         if self.pk:
-            try:
-                old = Publicacion.objects.get(pk=self.pk)
-                self._estado_anterior = old.estado
-            except Publicacion.DoesNotExist:
-                self._estado_anterior = None
+            original = getattr(self, '_estado_original', None)
+            if original is not None:
+                self._estado_anterior = original
+            else:
+                try:
+                    old = Publicacion.objects.get(pk=self.pk)
+                    self._estado_anterior = old.estado
+                except Publicacion.DoesNotExist:
+                    self._estado_anterior = None
         else:
             self._estado_anterior = None
         super().save(*args, **kwargs)
+        self._estado_original = self.estado
+
+    def cambiar_estado(self, nuevo):
+        """Cambia de estado validando el mapa; lanza ValueError si no procede."""
+        permitidos = self.TRANSICIONES.get(self.estado, set())
+        if nuevo not in permitidos:
+            raise ValueError(
+                f'Transición no permitida de {self.estado} a {nuevo}.'
+            )
+        self.estado = nuevo
+        if nuevo == self.Estado.PUBLICADA:
+            from django.utils import timezone
+            self.fechaPublicacion = timezone.now()
+            self.save(update_fields=['estado', 'fechaPublicacion'])
+        else:
+            self.save(update_fields=['estado'])
+        return self
 
     def publicar(self):
         from django.utils import timezone
