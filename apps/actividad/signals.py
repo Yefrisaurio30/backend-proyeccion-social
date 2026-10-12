@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from .middleware import get_current_user
 from .models import RegistroActividad
 
 User = get_user_model()
@@ -13,9 +14,14 @@ def _get_usuario(instance):
     return usuario
 
 
+def _get_actor(instance):
+    """Quien actúa (request) si lo hay; si no, el autor del objeto (L3)."""
+    return get_current_user() or _get_usuario(instance)
+
+
 @receiver(post_save, sender='publicaciones.Publicacion')
 def log_publicacion_save(sender, instance, created, **kwargs):
-    usuario = _get_usuario(instance)
+    usuario = _get_actor(instance)
     if created:
         RegistroActividad.objects.create(
             accion=RegistroActividad.Accion.CREAR,
@@ -59,7 +65,7 @@ def log_publicacion_save(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender='publicaciones.Publicacion')
 def log_publicacion_delete(sender, instance, **kwargs):
-    usuario = _get_usuario(instance)
+    usuario = _get_actor(instance)
     RegistroActividad.objects.create(
         accion=RegistroActividad.Accion.ELIMINAR,
         descripcion=f'Se elimino la publicacion "{instance.titulo}"',
@@ -71,7 +77,7 @@ def log_publicacion_delete(sender, instance, **kwargs):
 
 @receiver(post_save, sender='comentarios.Comentario')
 def log_comentario_save(sender, instance, created, **kwargs):
-    usuario = _get_usuario(instance)
+    usuario = _get_actor(instance)
     if created:
         RegistroActividad.objects.create(
             accion=RegistroActividad.Accion.CREAR,
@@ -102,7 +108,7 @@ def log_comentario_save(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender='comentarios.Comentario')
 def log_comentario_delete(sender, instance, **kwargs):
-    usuario = _get_usuario(instance)
+    usuario = _get_actor(instance)
     RegistroActividad.objects.create(
         accion=RegistroActividad.Accion.ELIMINAR,
         descripcion=f'Se elimino el comentario #{instance.pk}',

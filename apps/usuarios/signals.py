@@ -1,9 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import UsuarioRol
-
-
-ROLES_STAFF = {'Superadmin', 'Coordinación Central', 'Moderador', 'EditorPublicaciones'}
+from .permissions import ROLES_STAFF
 
 
 def _sync_is_staff(usuario):

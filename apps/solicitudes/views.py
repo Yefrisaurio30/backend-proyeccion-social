@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, BasePermission
+from apps.usuarios.permissions import es_staff
 from .models import Solicitud
 from .serializers import (
     SolicitudCreateSerializer,
@@ -12,11 +13,7 @@ from .serializers import (
 
 class IsStaffUser(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and (request.user.is_staff or request.user.is_superuser)
-        )
+        return es_staff(request.user)
 
 
 class PublicSolicitudCreateView(APIView):
@@ -40,7 +37,6 @@ class SolicitudViewSet(viewsets.ModelViewSet):
     permission_classes = [IsStaffUser]
     search_fields = ['nombre', 'email', 'asunto', 'mensaje']
     filterset_fields = ['estado', 'tipo']
-    pagination_class = None
 
     def get_queryset(self):
         qs = Solicitud.objects.all()

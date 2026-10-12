@@ -34,7 +34,8 @@ class PublicacionSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'fechaCreacion', 'fechaPublicacion', 'usuario', 'vistas']
 
     def get_imagenes_count(self, obj):
-        return obj.imagenes.count()
+        # Usa la anotación del queryset cuando existe (P1).
+        return getattr(obj, 'imagenes_count', obj.imagenes.count())
 
 
 class PublicacionListSerializer(serializers.ModelSerializer):
@@ -56,9 +57,11 @@ class PublicacionListSerializer(serializers.ModelSerializer):
         ]
 
     def get_imagenes_count(self, obj):
-        return obj.imagenes.count()
+        return getattr(obj, 'imagenes_count', obj.imagenes.count())
 
     def get_comentarios_count(self, obj):
+        if hasattr(obj, 'comentarios_count'):
+            return obj.comentarios_count
         return obj.comentarios.count()
 
     def get_autor_rol(self, obj):
@@ -84,8 +87,11 @@ class PublicacionPublicSerializer(serializers.ModelSerializer):
         ]
 
     def get_portada(self, obj):
-        primera = obj.imagenes.order_by('fechaCarga').first()
-        return primera.ruta if primera else None
+        # Lee del prefetch (ya ordenado por fechaCarga) sin query extra (P1).
+        imagenes = list(obj.imagenes.all())
+        return imagenes[0].ruta if imagenes else None
 
     def get_comentarios_count(self, obj):
+        if hasattr(obj, 'comentarios_count'):
+            return obj.comentarios_count
         return obj.comentarios.filter(estado='APROBADO').count()

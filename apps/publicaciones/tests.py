@@ -175,7 +175,7 @@ class CU04_ComentariosAprobadosTest(TestCase):
     def test_solo_aprobados_visibles(self):
         resp = self.client.get('/api/comentarios/publicos/', {'publicacion_id': self.pub.pk})
         self.assertEqual(resp.status_code, 200)
-        contenidos = [c['contenido'] for c in resp.data]
+        contenidos = [c['contenido'] for c in resp.data['results']]
         self.assertIn('Aprobado', contenidos)
         self.assertNotIn('Pendiente', contenidos)
 
@@ -217,7 +217,7 @@ class CU05_RegistrarUsuarioTest(TestCase):
 
 
 # ======================================================================
-# CU-06: Iniciar sesion
+# CU-06: Iniciar sesión
 # ======================================================================
 
 
@@ -318,7 +318,7 @@ class CU08_ModerarComentarioTest(TestCase):
     def test_cola_pendientes(self):
         resp = self.client.get('/api/comentarios/pendientes/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data['results']), 1)
 
 
 # ======================================================================
@@ -686,7 +686,7 @@ class FlujoCompletoComentarioTest(TestCase):
         # 2. No visible publicamente aun
         self.client.force_authenticate(user=None)
         resp = self.client.get('/api/comentarios/publicos/', {'publicacion_id': self.pub.pk})
-        contenidos = [c['contenido'] for c in resp.data]
+        contenidos = [c['contenido'] for c in resp.data['results']]
         self.assertNotIn('Muy interesante articulo', contenidos)
 
         # 3. Staff aprueba
@@ -697,7 +697,7 @@ class FlujoCompletoComentarioTest(TestCase):
         # 4. Ahora visible publicamente
         self.client.force_authenticate(user=None)
         resp = self.client.get('/api/comentarios/publicos/', {'publicacion_id': self.pub.pk})
-        contenidos = [c['contenido'] for c in resp.data]
+        contenidos = [c['contenido'] for c in resp.data['results']]
         self.assertIn('Muy interesante articulo', contenidos)
 
 
@@ -793,7 +793,7 @@ class CU19_MisProyectosTest(TestCase):
 
 
 class CU20_LoginLogoutTest(TestCase):
-    """CU-20: Login acepta usuario o correo; logout cierra sesion."""
+    """CU-20: Login acepta usuario o correo; logout cierra sesión."""
 
     def setUp(self):
         self.client = APIClient()
@@ -866,7 +866,7 @@ class CU21_SolicitudesTest(TestCase):
         self.client.force_authenticate(user=self.staff)
         resp = self.client.get('/api/solicitudes/')
         self.assertEqual(resp.status_code, 200)
-        sol_id = resp.data[0]['id']
+        sol_id = resp.data['results'][0]['id']
         resp = self.client.patch(f'/api/solicitudes/{sol_id}/', {'estado': 'RESUELTA'}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['estado'], 'RESUELTA')
@@ -892,11 +892,11 @@ class CU22_ImagenesLocalesTest(TestCase):
         self.pub = crear_publicacion(usuario=self.staff)
         self.client.force_authenticate(user=self.staff)
         from django.core.files.uploadedfile import SimpleUploadedFile
-        self.png = (
-            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
-            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00'
-            b'\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
-        )
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new('RGB', (1, 1), color='red').save(buf, format='PNG')
+        self.png = buf.getvalue()
         self.SimpleUploadedFile = SimpleUploadedFile
 
     def test_subir_imagen_local(self):
@@ -925,3 +925,196 @@ class CU22_ImagenesLocalesTest(TestCase):
             'archivo': archivo, 'publicacion': otro.pk, 'nombre': 'Ajena',
         }, format='multipart')
         self.assertEqual(resp.status_code, 403)
+
+
+# ======================================================================
+# S3 (Fase 1): Categorías — lectura pública, escritura solo staff
+# ======================================================================
+
+
+class S3CategoriasPermisosTest(TestCase):
+    """Un usuario registrado no puede crear, editar ni borrar categorías."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.usuario = crear_usuario()
+        self.staff = crear_staff()
+        self.categoria = crear_categoria()
+
+    def test_lectura_publica_anonima(self):
+        resp = self.client.get('/api/publicaciones/categorias/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_usuario_no_crea_categoria(self):
+        self.client.force_authenticate(user=self.usuario)
+        resp = self.client.post('/api/publicaciones/categorias/', {
+            'nombre': 'Intrusa', 'descripcion': 'x',
+        }, format='json')
+        self.assertIn(resp.status_code, [401, 403])
+        self.assertFalse(Categoria.objects.filter(nombre='Intrusa').exists())
+
+    def test_usuario_no_edita_categoria(self):
+        self.client.force_authenticate(user=self.usuario)
+        resp = self.client.patch(
+            f'/api/publicaciones/categorias/{self.categoria.pk}/',
+            {'descripcion': 'Hackeada'}, format='json')
+        self.assertIn(resp.status_code, [401, 403])
+
+    def test_usuario_no_borra_categoria(self):
+        self.client.force_authenticate(user=self.usuario)
+        resp = self.client.delete(
+            f'/api/publicaciones/categorias/{self.categoria.pk}/')
+        self.assertIn(resp.status_code, [401, 403])
+        self.assertTrue(
+            Categoria.objects.filter(pk=self.categoria.pk).exists())
+
+    def test_staff_si_gestiona_categorias(self):
+        self.client.force_authenticate(user=self.staff)
+        resp = self.client.post('/api/publicaciones/categorias/', {
+            'nombre': 'Autorizada', 'descripcion': 'ok',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+
+
+# ======================================================================
+# L1 (Fase 2): editar una publicada la devuelve a revisión
+# ======================================================================
+
+
+class L1EditarPublicadaTest(TestCase):
+    """El autor no puede reescribir una PUBLICADA sin pasar por moderación."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.autor = crear_usuario()
+        self.staff = crear_staff()
+        self.pub = crear_publicacion(
+            estado=Publicacion.Estado.PUBLICADA, usuario=self.autor)
+
+    def test_editar_publicada_vuelve_a_revision(self):
+        self.client.force_authenticate(user=self.autor)
+        resp = self.client.patch(
+            f'/api/publicaciones/publicaciones/{self.pub.pk}/',
+            {'contenido': 'Contenido reescrito sin revisión.'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.pub.refresh_from_db()
+        self.assertEqual(self.pub.estado, Publicacion.Estado.EN_REVISION)
+
+    def test_autor_no_publica_directo(self):
+        self.client.force_authenticate(user=self.autor)
+        resp = self.client.patch(
+            f'/api/publicaciones/publicaciones/{self.pub.pk}/',
+            {'estado': 'PUBLICADA'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_staff_edita_sin_cambiar_estado(self):
+        self.client.force_authenticate(user=self.staff)
+        resp = self.client.patch(
+            f'/api/publicaciones/publicaciones/{self.pub.pk}/',
+            {'contenido': 'Ajuste editorial.'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.pub.refresh_from_db()
+        self.assertEqual(self.pub.estado, Publicacion.Estado.PUBLICADA)
+
+
+# ======================================================================
+# P1 (Fase 3): sin N+1 en los listados
+# ======================================================================
+
+
+class P1SinNPlusOneTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.usuario = crear_usuario()
+        self.categoria = crear_categoria()
+        for i in range(5):
+            pub = crear_publicacion(
+                titulo=f'Pub P1 {i}', usuario=self.usuario,
+                categoria=self.categoria)
+            from apps.imagenes.models import Imagen
+            Imagen.objects.create(
+                nombre=f'Img {i}', ruta=f'/media/p1_{i}.png',
+                publicacion=pub)
+            crear_comentario(pub, self.usuario, estado=Comentario.Estado.APROBADO)
+
+    def test_listado_publico_acotado(self):
+        with self.assertNumQueries(3):
+            resp = self.client.get('/api/publicaciones/publicas/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data['results']), 5)
+        self.assertTrue(all('portada' in p for p in resp.data['results']))
+
+
+# ======================================================================
+# P4 (Fase 4): vistas por sesión y save() sin SELECT extra
+# ======================================================================
+
+
+class P4VistasYSavesTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.pub = crear_publicacion(estado=Publicacion.Estado.PUBLICADA)
+
+    def test_dos_recargas_una_vista(self):
+        url = f'/api/publicaciones/publicas/{self.pub.pk}/'
+        self.client.get(url)
+        self.client.get(url)
+        self.pub.refresh_from_db()
+        self.assertEqual(self.pub.vistas, 1)
+
+    def test_save_sin_select_extra(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        pub = Publicacion.objects.get(pk=self.pub.pk)
+        with CaptureQueriesContext(connection) as ctx:
+            pub.cambiar_estado(Publicacion.Estado.BORRADOR)
+        selects_propios = [
+            q for q in ctx.captured_queries
+            if q['sql'].startswith('SELECT')
+            and '"publicaciones_publicacion"' in q['sql']
+        ]
+        self.assertEqual(selects_propios, [])
+
+
+# ======================================================================
+# L4 (Fase 3): máquina de estados validada
+# ======================================================================
+
+
+class L4TransicionesTest(TestCase):
+    """Archivar un borrador falla; ARCHIVADA no vuelve a revisión directo."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = crear_staff()
+        self.borrador = crear_publicacion(
+            estado=Publicacion.Estado.BORRADOR, usuario=self.staff,
+            titulo='Borrador L4')
+        self.archivada = crear_publicacion(
+            estado=Publicacion.Estado.ARCHIVADA, usuario=self.staff,
+            titulo='Archivada L4')
+        self.client.force_authenticate(user=self.staff)
+
+    def test_archivar_borrador_falla(self):
+        resp = self.client.post(
+            f'/api/publicaciones/publicaciones/{self.borrador.pk}/archivar/')
+        self.assertEqual(resp.status_code, 400)
+        self.borrador.refresh_from_db()
+        self.assertEqual(self.borrador.estado, Publicacion.Estado.BORRADOR)
+
+    def test_archivada_no_vuelve_a_revision(self):
+        resp = self.client.post(
+            f'/api/publicaciones/publicaciones/{self.archivada.pk}/enviar-revision/')
+        self.assertEqual(resp.status_code, 400)
+        self.archivada.refresh_from_db()
+        self.assertEqual(self.archivada.estado, Publicacion.Estado.ARCHIVADA)
+
+    def test_archivar_publicada_ok(self):
+        pub = crear_publicacion(
+            estado=Publicacion.Estado.PUBLICADA, usuario=self.staff,
+            titulo='Pub L4')
+        resp = self.client.post(
+            f'/api/publicaciones/publicaciones/{pub.pk}/archivar/')
+        self.assertEqual(resp.status_code, 200)
+        pub.refresh_from_db()
+        self.assertEqual(pub.estado, Publicacion.Estado.ARCHIVADA)

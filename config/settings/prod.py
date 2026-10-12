@@ -1,6 +1,9 @@
-from config.settings.local import *  # noqa: F401, F403
+"""Producción. Hereda de base.py, NO de local.py (C1)."""
+from config.settings.base import *  # noqa: F401, F403
 
 import os
+
+from django.core.exceptions import ImproperlyConfigured
 
 # ======================================================================
 # PRODUCTION SETTINGS - Sistema de Proyeccion Social UNIMINUTO
@@ -8,9 +11,14 @@ import os
 
 DEBUG = False
 
-SECRET_KEY = os.environ.get('SECRET_KEY', SECRET_KEY)  # noqa: F405
+# En producción la clave es obligatoria: fallar sin ella (S5).
+SECRET_KEY = os.environ['SECRET_KEY']
+if SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < 40:
+    raise ImproperlyConfigured('SECRET_KEY de producción inválida')
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = [
+    h.strip() for h in os.environ.get('ALLOWED_HOSTS', '').split(',') if h.strip()
+]
 
 # ------------------------------------------------------------------
 # CORS - Politicas estrictas
@@ -43,13 +51,15 @@ CORS_ALLOW_HEADERS = [
 # ------------------------------------------------------------------
 # Seguridad HTTPS (Render / Railway)
 # ------------------------------------------------------------------
+# El TLS termina en el proxy (Render/Railway/nginx): sin esto, Django cree
+# que todo llega por HTTP y SECURE_SSL_REDIRECT entra en bucle (C2).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
@@ -64,11 +74,16 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.actividad.middleware.ActividadUsuarioMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# STORAGES reemplaza a STATICFILES_STORAGE (obsoleto desde Django 4.2).
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # noqa: F405
 
 # ------------------------------------------------------------------
@@ -118,3 +133,14 @@ LOGGING = {
         },
     },
 }
+
+# ------------------------------------------------------------------
+# Contraseñas: no heredar la lista vacía de local.py (S6).
+# ------------------------------------------------------------------
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+     'OPTIONS': {'min_length': 8}},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]

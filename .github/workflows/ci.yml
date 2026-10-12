@@ -1,0 +1,50 @@
+# CI backend — corre en cada PR y en push a main/develop.
+name: CI Backend
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: proyeccion_social
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d proyeccion_social"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instala dependencias
+        run: pip install -r requirements.txt ruff
+      - name: Ruff
+        run: ruff check .
+      - name: Django check
+        env:
+          DJANGO_SETTINGS_ENV: local
+          DB_NAME: proyeccion_social
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+        run: python manage.py check
+      - name: Pruebas
+        env:
+          DJANGO_SETTINGS_ENV: local
+          DB_NAME: proyeccion_social
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+        run: python manage.py test

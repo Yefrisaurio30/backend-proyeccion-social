@@ -2,8 +2,6 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.utils import timezone
-from django.db.models import Q
 from .models import Comentario
 from .serializers import (
     ComentarioCreateSerializer,
@@ -58,16 +56,31 @@ class ComentarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='publicos')
     def publicos(self, request):
+        from apps.publicaciones.models import Publicacion
         publicacion_id = request.query_params.get('publicacion_id')
         if not publicacion_id:
             return Response(
                 {'detail': 'El parametro publicacion_id es requerido.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        try:
+            publicacion_id = int(publicacion_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'El parametro publicacion_id debe ser un entero.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         comentarios = Comentario.objects.filter(
             publicacion_id=publicacion_id,
             estado=Comentario.Estado.APROBADO,
+            publicacion__estado__in=[
+                Publicacion.Estado.PUBLICADA, Publicacion.Estado.ARCHIVADA,
+            ],
         ).select_related('usuario').order_by('-fechaCreacion')
+        pagina = self.paginate_queryset(comentarios)
+        if pagina is not None:
+            serializer = ComentarioPublicSerializer(pagina, many=True)
+            return self.get_paginated_response(serializer.data)
         serializer = ComentarioPublicSerializer(comentarios, many=True)
         return Response(serializer.data)
 
@@ -76,6 +89,10 @@ class ComentarioViewSet(viewsets.ModelViewSet):
         comentarios = Comentario.objects.filter(
             estado=Comentario.Estado.PENDIENTE,
         ).select_related('publicacion', 'usuario').order_by('fechaCreacion')
+        pagina = self.paginate_queryset(comentarios)
+        if pagina is not None:
+            serializer = ComentarioModerationSerializer(pagina, many=True)
+            return self.get_paginated_response(serializer.data)
         serializer = ComentarioModerationSerializer(comentarios, many=True)
         return Response(serializer.data)
 
